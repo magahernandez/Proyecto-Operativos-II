@@ -79,6 +79,7 @@ char **split_line(char *line, int * num_args)
 {
 	// Cantidad de tokens maxima
   int bufsize = 64;
+
   // Token actual escribiendo
   int position = 0;
   // Arreglo de todos los comandos
@@ -94,6 +95,7 @@ char **split_line(char *line, int * num_args)
   begin = 0;
   // Tokenizamos programas, operadores, flags, archivos
   for(end = 1; end < strlen(line); end++) {
+
   	if (line[end] == ' ') {
   		if (end == begin) {
   			begin++;
@@ -138,7 +140,7 @@ char **split_line(char *line, int * num_args)
   for (int i = 0; i < position; i++) {
   	printf("%s\n", tokens[i]);
   }
-  printf("Num args: %d\n", *num_args);
+  printf("Num tokens: %d\n", *num_args);
   // exit(0);
   return tokens;
 }
@@ -202,6 +204,7 @@ int _ls(char * flag, FILE * output)
 	   			}
     		}
     		fprintf(output, "Total: %i\n",s/2);
+
     	}
     	
     	else {
@@ -572,6 +575,7 @@ int _ls(char * flag, FILE * output)
     			fprintf(output,"Comando no valido\n");
     		}
     	}
+    	fflush(output);
     	return 0;
 }
 
@@ -765,16 +769,29 @@ int (*builtin_func[]) (char **) = {
 
 
 
-void loop(void){
-  char *line;
+void loop(FILE * in){
+  char *line = malloc(sizeof(char) * 250);
+  	int * n_tokens = malloc(sizeof(int));
   
   
   do
   {	
-    printf("> ");
-    line = read_line();
+  	if (in == NULL) {
+  		printf("> ");
+    	line = read_line();	
+  	}
+  	else {
+  		if (feof(in) != 0) {
+  			exit(0);
+  		}
+  		memset(line, 0, sizeof(char) * 250);
+  		line = fgets(line, 250, in);
+  		if (line == NULL) exit(0);
+  		line[strlen(line) - 1] = '\0';
+  	}
+    
     // Tokenizamos la linea de input
-  	int * n_tokens = malloc(sizeof(int));  
+  	printf("Analizing tokens:\n");
     char **args = split_line(line, n_tokens);
     // Realizamos el plan de ejecucion
 
@@ -787,7 +804,7 @@ void loop(void){
     // Buscamos operador '>'
     for (int i = 0; i < *n_tokens; i++) {
     	if (args[i][0] == '>') {
-    		foutput = fopen(args[i+1], "r+");
+    		foutput = fopen(args[i+1], "w+");
     		printf("Opened file for final output: %s\n", args[i+1]);
     	}
     }
@@ -802,7 +819,7 @@ void loop(void){
 
     	////////////////// Caso ls
     	if (strcmp(args[i], builtin_str[0]) == 0){
-    		printf("hola\n");
+
     		// Revisamos si hay flags
     		if (i + 1 < *n_tokens) {
     			if (args[i+1][0] == '-') {
@@ -842,7 +859,6 @@ void loop(void){
     				i += 1;
     			}
     			else if (args[i+1][0] == '>') {
-    				printf("sos\n");
 
     				_ls(NULL, foutput);
     			}
@@ -857,6 +873,7 @@ void loop(void){
     		}
     	}
 
+    	
     	////////////////// CASO GREP
     	else if (strcmp(args[i], builtin_str[1]) == 0){
     		// Revisamos si tiene flags
@@ -872,6 +889,7 @@ void loop(void){
     						output = fopen(input_name, "w+");
     						_grep(args[i+1], args[i+2], input, output);
     						input = output;
+    						fseek(input, 0, SEEK_SET);
     						i += 3;
     					}
     					else {
@@ -899,6 +917,7 @@ void loop(void){
     						output = fopen(input_name, "w+");
     						_grep(args[i+1], args[i+2], input, output);
     						input = output;
+    						fseek(input, 0, SEEK_SET);
     						i += 4;
     					}
     					// Revisamos si hay operador '>'
@@ -917,7 +936,7 @@ void loop(void){
     				// Buscamos el archivo de entrada
     				// En este caso, vemos si otro programa nos dejo un input
     				if (input != NULL) {
-    					printf("Nos dejaron un input\n");
+    					printf("Input encontrado de operacion anterior\n");
     					// Vemos si hay operador '|'
     					if (i + 2 < *n_tokens && (args[i+2][0] == '|')) {
     						*n_input = (*n_input + 1) % 2;
@@ -925,6 +944,7 @@ void loop(void){
     						output = fopen(input_name, "w+");
     						_grep(NULL, args[i+1], input, output);
     						input = output;
+    						fseek(input, 0, SEEK_SET);
     						i += 2;
     					}
     					else {
@@ -957,6 +977,7 @@ void loop(void){
     						output = fopen(input_name, "w+");
     						_grep(NULL, args[i+1], input, output);
     						input = output;
+    						fseek(input, 0, SEEK_SET);
     						i += 3;
     					}
     					// Revisamos si hay operador '>'
@@ -980,14 +1001,20 @@ void loop(void){
 	    	_chmod(args[1+i], args[i+2]);
 	    }
     }
-       
-    free(line);
-    for(int i = 0; i < *n_tokens; i++) {
-    	free(args[i]);
-    }
+	if (foutput != NULL){
+		fclose(foutput);
+		foutput = NULL;
+	}
+    //free(line);
+    //for(int i = 0; i < *n_tokens; i++) {
+    //	free(args[i]);
+    //}
     free(args);
+    //free(line);
    
   } while (1);
+    free(n_tokens);
+
 }
 
 
@@ -995,8 +1022,16 @@ int main(int argc, char **argv){
 
 	// Lee	r un archivo
 	if(argv[1]!=NULL){
+		FILE * in = fopen(argv[1], "r");
+		if (in == NULL) {
+			fprintf(stderr, "%s\n", "Error opening file");
+		}
+		else {
+			loop(in);
+		}
 	}
-
-	loop();
+	else {
+		loop(NULL);
+	}
 	return 0;
 }
